@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fetchora Capture</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 16px;
+            width: 320px;
+            font-family: Arial, sans-serif;
+            background: #111111;
+            color: #ffffff;
+        }
+        h1 {
+            margin: 0 0 12px 0;
+            font-size: 18px;
+        }
+        p, li {
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .card {
+            border: 2px solid #bef264;
+            padding: 12px;
+            margin-bottom: 12px;
+            background: #1c1c1c;
+        }
+        button {
+            width: 100%;
+            margin-top: 8px;
+            padding: 10px 12px;
+            font-weight: 700;
+            border: 2px solid #000000;
+            background: #bef264;
+            color: #000000;
+            cursor: pointer;
+        }
+        button.secondary {
+            background: #fb923c;
+        }
+        .media-list {
+            max-height: 180px;
+            overflow-y: auto;
+            padding-left: 18px;
+        }
+        .status {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <h1>Fetchora Capture</h1>
+
+    <div class="card">
+        <p>Send the current page or detected media into the Fetchora desktop app.</p>
+        <button id="send-page-btn" type="button">SEND CURRENT PAGE</button>
+        <button id="scan-media-btn" class="secondary" type="button">SCAN MEDIA ON PAGE</button>
+    </div>
+
+    <div class="card">
+        <p class="status" id="status-text">READY</p>
+        <ul class="media-list" id="media-list">
+            <li>No media scanned yet.</li>
+        </ul>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

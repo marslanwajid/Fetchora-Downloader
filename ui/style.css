@@ -246,6 +246,120 @@ body.dark-mode {
     display: block;
 }
 
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 24px;
+    margin-bottom: 30px;
+}
+
+.overview-panel,
+.browser-panel {
+    background: var(--surface);
+    border: var(--border-width) solid var(--pure-black);
+    box-shadow: var(--hard-shadow);
+    padding: 24px;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+}
+
+.source-pill-grid,
+.source-chip-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.source-pill,
+.source-chip {
+    padding: 8px 12px;
+    border: var(--border-width) solid var(--pure-black);
+    background: var(--surface-highest);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: var(--text-primary);
+}
+
+.source-chip-row {
+    padding: 0 24px 10px 24px;
+}
+
+.active-kind {
+    background: var(--cyber-lime) !important;
+    color: var(--pure-black) !important;
+}
+
+.panel-copy,
+.setting-note {
+    margin-top: 16px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.5;
+    opacity: 0.8;
+}
+
+.browser-capture-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.capture-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    border: var(--border-width) solid var(--pure-black);
+    background: var(--surface-low);
+}
+
+.capture-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.capture-copy strong,
+.capture-copy span,
+.capture-copy p {
+    overflow-wrap: anywhere;
+}
+
+.capture-copy strong {
+    font-size: 12px;
+}
+
+.capture-copy span {
+    color: var(--electric-orange);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.capture-copy p {
+    font-size: 11px;
+    opacity: 0.75;
+}
+
+.capture-actions {
+    display: flex;
+    align-items: center;
+}
+
+.compact-empty {
+    padding: 30px;
+    font-size: 12px;
+}
+
 /* Search Container */
 .search-container {
     display: flex;
@@ -754,8 +868,18 @@ body.dark-mode {
 }
 
 .video-info-panel h4 {
+    padding: 0 24px 18px 24px;
     margin-bottom: 15px;
     font-weight: 800;
+}
+
+.source-info-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 24px 8px 24px;
+    font-size: 11px;
+    font-weight: 700;
 }
 
 /* Playlist Bulk Options */

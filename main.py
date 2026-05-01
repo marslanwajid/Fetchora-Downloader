@@ -1,134 +1,46 @@
-import eel
 import os
-import threading
+import shutil
+import sys
 import tkinter as tk
 from tkinter import filedialog
-import shutil
+
+from PySide6.QtCore import QUrl
+from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtWebEngineWidgets import QWebEngineView
+
+from app_server import build_app_server
 from engine import YTDLEngine
 
-# Configuration
+
 APP_NAME = "FETCHORA"
+HOST = "127.0.0.1"
+PORT = 38945
 SAVE_DIR = os.path.join(os.path.expanduser("~"), "Downloads", "FETCHORA_Downloads")
 BROWSER = "None"
+BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+RUNTIME_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
+UI_DIR = os.path.join(BASE_DIR, "ui")
 
-# Initialize Engine
+
 engine = YTDLEngine()
 
-# --- Eel Exposed Functions ---
 
-@eel.expose
-def get_video_info(url):
+def set_browser(browser_name):
     global BROWSER
-    return engine.get_info(url, browser=BROWSER)
+    BROWSER = browser_name
 
-@eel.expose
-def start_download(url, format_id, download_id):
-    global BROWSER
-    engine.download(url, format_id=format_id, save_path=SAVE_DIR, browser=BROWSER, download_id=download_id)
 
-@eel.expose
 def open_file(path):
     if os.path.exists(path):
         os.startfile(path)
 
-@eel.expose
+
 def open_folder(path):
     folder = os.path.dirname(path) if os.path.isfile(path) else path
     if os.path.exists(folder):
         os.startfile(folder)
 
-@eel.expose
-def start_bulk_download(items, quality):
-    global BROWSER
-    # Map quality labels to format IDs
-    format_map = {
-        "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-        "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-        "480p": "bestvideo[height<=480]+bestaudio/best[height<=480]/best",
-        "360p": "bestvideo[height<=360]+bestaudio/best[height<=360]/best",
-        "best": "best",
-        "audio": "bestaudio/best"
-    }
-    format_id = format_map.get(quality, "best")
-    
-    for item in items:
-        engine.download(item['url'], format_id=format_id, save_path=SAVE_DIR, browser=BROWSER, download_id=item['id'])
 
-@eel.expose
-def cancel_download(download_id):
-    engine.cancel(download_id)
-
-@eel.expose
-def cancel_all_downloads():
-    engine.cancel()
-
-@eel.expose
-def set_browser(browser_name):
-    global BROWSER
-    BROWSER = browser_name
-
-@eel.expose
-def get_clipboard():
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        text = root.clipboard_get()
-    except:
-        text = ""
-    root.destroy()
-    return text
-
-def on_progress(dl_id, p, speed, eta):
-    eel.onProgress(dl_id, p, speed, eta)
-
-def on_complete(dl_id, file_path, file_size):
-    eel.onComplete(dl_id, file_path, file_size)
-
-def on_error(dl_id, error):
-    eel.onError(dl_id, error)
-
-def system_message(message, level="info"):
-    eel.onSystemMessage(message, level)
-
-# Set callbacks
-engine.progress_callback = on_progress
-engine.completion_callback = on_complete
-engine.error_callback = on_error
-
-# --- FFmpeg Installer ---
-
-def install_ffmpeg_logic():
-    import urllib.request
-    import zipfile
-    import io
-    
-    try:
-        system_message("Installing FFmpeg package...", "info")
-        url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-win-64.zip"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
-            buffer = io.BytesIO(response.read())
-            with zipfile.ZipFile(buffer) as z:
-                z.extract('ffmpeg.exe', path=os.getcwd())
-        system_message("FFmpeg installed successfully.", "success")
-    except Exception as e:
-        system_message(f"Failed to install FFmpeg: {e}", "error")
-
-@eel.expose
-def trigger_ffmpeg_install():
-    threading.Thread(target=install_ffmpeg_logic).start()
-
-@eel.expose
-def get_settings():
-    local_ffmpeg = os.path.join(os.getcwd(), 'ffmpeg.exe')
-    has_ffmpeg = shutil.which("ffmpeg") or os.path.exists(local_ffmpeg)
-    return {
-        "save_path": SAVE_DIR,
-        "has_ffmpeg": bool(has_ffmpeg),
-        "browser": BROWSER
-    }
-
-@eel.expose
 def change_save_path():
     root = tk.Tk()
     root.withdraw()
@@ -140,17 +52,88 @@ def change_save_path():
         return path
     return None
 
-# --- Main Start ---
 
-if __name__ == "__main__":
+def get_settings():
+    bundled_ffmpeg = os.path.exists(os.path.join(BASE_DIR, "ffmpeg.exe"))
+    local_ffmpeg = os.path.exists(os.path.join(RUNTIME_DIR, "ffmpeg.exe"))
+    has_ffmpeg = bool(shutil.which("ffmpeg") or bundled_ffmpeg or local_ffmpeg)
+    return {
+        "app_name": APP_NAME,
+        "save_path": SAVE_DIR,
+        "has_ffmpeg": has_ffmpeg,
+        "ffmpeg_mode": "bundled" if bundled_ffmpeg else ("local" if local_ffmpeg else ("system" if shutil.which("ffmpeg") else "missing")),
+        "browser": BROWSER,
+        "bridge_port": PORT,
+    }
+
+
+def install_ffmpeg_logic():
+    import io
+    import urllib.request
+    import zipfile
+
+    try:
+        url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-win-64.zip"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req) as response:
+            buffer = io.BytesIO(response.read())
+            with zipfile.ZipFile(buffer) as archive:
+                archive.extract("ffmpeg.exe", path=RUNTIME_DIR)
+    except Exception:
+        pass
+
+
+class FetchoraWindow(QMainWindow):
+    def __init__(self, server):
+        super().__init__()
+        self._server = server
+        self.setWindowTitle(APP_NAME)
+        self.resize(1260, 860)
+        self.setMinimumSize(1100, 760)
+
+        self.web_view = QWebEngineView(self)
+        self.web_view.setUrl(QUrl(f"http://{HOST}:{PORT}/"))
+        self.setCentralWidget(self.web_view)
+
+    def closeEvent(self, event):
+        try:
+            self._server.shutdown()
+        finally:
+            super().closeEvent(event)
+
+
+def main():
     if not os.path.exists(SAVE_DIR):
         os.makedirs(SAVE_DIR)
-        
-    # Initialize Eel
-    eel.init('ui')
-    
-    # Start App
+
+    server_bundle = build_app_server(
+        host=HOST,
+        port=PORT,
+        ui_dir=UI_DIR,
+        engine=engine,
+        get_settings=get_settings,
+        change_save_path=change_save_path,
+        set_browser=set_browser,
+        open_file=open_file,
+        open_folder=open_folder,
+        install_ffmpeg=install_ffmpeg_logic,
+    )
+
+    engine.progress_callback = server_bundle["on_progress"]
+    engine.completion_callback = server_bundle["on_complete"]
+    engine.error_callback = server_bundle["on_error"]
+
+    server = server_bundle["start"]()
+
+    app = QApplication(sys.argv)
+    window = FetchoraWindow(server)
+    window.show()
+
     try:
-        eel.start('index.html', size=(1024, 768))
-    except (SystemExit, KeyboardInterrupt):
-        print("App closed")
+        return app.exec()
+    finally:
+        server.shutdown()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -8,19 +8,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script type="text/javascript" src="/eel.js"></script>
 </head>
 <body class="dark-mode">
     <div class="app-container">
         <aside class="sidebar">
             <div class="logo-container">
                 <img src="logo.png" alt="FETCHORA Logo" class="logo">
-                <h1 class="brand-name">FETCHORA </h1>
+                <h1 class="brand-name">FETCHORA</h1>
             </div>
 
             <nav class="main-nav">
                 <button class="nav-btn active" type="button" onclick="showView('dashboard')">DASHBOARD</button>
-                <button class="nav-btn" type="button" onclick="openModal('add-url-modal')">ADD URL</button>
+                <button class="nav-btn" type="button" onclick="openModal('add-url-modal')">ADD SOURCE</button>
                 <button class="nav-btn" type="button" onclick="showView('settings')">SETTINGS</button>
             </nav>
 
@@ -37,7 +36,7 @@
 
             <div class="sidebar-footer">
                 <div class="sync-login">
-                    <label>SYNC LOGIN:</label>
+                    <label>SYNC LOGIN</label>
                     <select id="browser-sync" onchange="updateBrowserSync()">
                         <option value="None">NONE</option>
                         <option value="Chrome">CHROME</option>
@@ -57,8 +56,38 @@
             </div>
 
             <section id="view-dashboard" class="view active">
+                <div class="dashboard-grid">
+                    <section class="overview-panel">
+                        <div class="panel-header">
+                            <h2 class="view-title">SOURCE MODES</h2>
+                        </div>
+                        <div class="source-pill-grid">
+                            <span class="source-pill active-kind" id="pill-video">VIDEO</span>
+                            <span class="source-pill" id="pill-audio">AUDIO</span>
+                            <span class="source-pill" id="pill-file">FILE</span>
+                            <span class="source-pill" id="pill-playlist">PLAYLIST</span>
+                            <span class="source-pill" id="pill-document">DOCUMENT</span>
+                            <span class="source-pill" id="pill-browser">BROWSER</span>
+                        </div>
+                        <p class="panel-copy" id="source-summary">DROP IN A URL OR SEND A PAGE FROM THE BROWSER EXTENSION.</p>
+                    </section>
+
+                    <section class="browser-panel">
+                        <div class="panel-header">
+                            <h2 class="view-title">BROWSER INBOX</h2>
+                            <div class="filter-group">
+                                <button class="filter-btn" type="button" onclick="pollCaptures()">REFRESH</button>
+                                <button class="filter-btn" type="button" onclick="clearBrowserInbox()">CLEAR INBOX</button>
+                            </div>
+                        </div>
+                        <div id="browser-captures" class="browser-capture-list">
+                            <div class="empty-state compact-empty">NO BROWSER CAPTURES YET</div>
+                        </div>
+                    </section>
+                </div>
+
                 <div class="view-header">
-                    <h2 class="view-title">DASHBOARD</h2>
+                    <h2 class="view-title">DOWNLOAD QUEUE</h2>
                     <div class="filter-group">
                         <button class="filter-btn active" type="button" onclick="filterDownloads('all', this)">ALL</button>
                         <button class="filter-btn" type="button" onclick="filterDownloads('active', this)">ACTIVE</button>
@@ -100,12 +129,20 @@
                         </div>
                     </div>
                     <div class="setting-card">
-                        <label>FFMPEG STATUS</label>
+                        <label>MEDIA ENGINE</label>
                         <div class="status-indicator" id="ffmpeg-status">
                             <span class="light red"></span>
-                            <span class="text">NOT DETECTED</span>
-                            <button class="small-btn" type="button" onclick="eel.trigger_ffmpeg_install()()">INSTALL</button>
+                            <span class="text">NOT READY</span>
+                            <button class="small-btn" type="button" onclick="triggerFfmpegInstall()">INSTALL</button>
                         </div>
+                    </div>
+                    <div class="setting-card">
+                        <label>BROWSER BRIDGE</label>
+                        <div class="status-indicator">
+                            <span class="light green"></span>
+                            <span class="text" id="bridge-status">LOCAL BRIDGE READY</span>
+                        </div>
+                        <p class="setting-note" id="bridge-port-note">WAITING FOR APP SETTINGS...</p>
                     </div>
                 </div>
             </section>
@@ -115,21 +152,34 @@
     <div id="add-url-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>ADD NEW URL</h3>
+                <h3>ADD NEW SOURCE</h3>
                 <button class="close-btn" type="button" onclick="closeModal('add-url-modal')">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="search-container">
-                    <input type="text" id="url-input" placeholder="PASTE VIDEO OR PLAYLIST URL..." spellcheck="false">
+                    <input type="text" id="url-input" placeholder="PASTE VIDEO, FILE, DOCUMENT, OR PLAYLIST URL..." spellcheck="false">
                     <button class="icon-btn text-icon-btn" type="button" onclick="pasteClipboard()">PASTE</button>
                 </div>
-                <button id="fetch-btn" class="primary-btn full-width" type="button" onclick="fetchInfo()">SCAN URL</button>
+
+                <div class="source-chip-row">
+                    <span class="source-chip" id="source-chip-video">VIDEO</span>
+                    <span class="source-chip" id="source-chip-audio">AUDIO</span>
+                    <span class="source-chip" id="source-chip-file">FILE</span>
+                    <span class="source-chip" id="source-chip-playlist">PLAYLIST</span>
+                    <span class="source-chip" id="source-chip-document">DOCUMENT</span>
+                </div>
+
+                <button id="fetch-btn" class="primary-btn full-width" type="button" onclick="fetchInfo()">SCAN SOURCE</button>
 
                 <div id="video-info" class="video-info-panel hidden">
-                    <h4 id="video-title">VIDEO TITLE</h4>
+                    <div class="source-info-banner">
+                        <span class="status-tag" id="detected-kind">READY</span>
+                        <span id="detected-note">SOURCE DETAILS WILL APPEAR HERE</span>
+                    </div>
+                    <h4 id="video-title">SOURCE TITLE</h4>
                     <div class="formats-list-container">
                         <div class="list-header">
-                            <span class="col-res">RES</span>
+                            <span class="col-res">MODE</span>
                             <span class="col-type">TYPE</span>
                             <span class="col-size">SIZE</span>
                             <span class="col-action">GET</span>

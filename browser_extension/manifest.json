@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Fetchora Capture",
+  "version": "0.1.0",
+  "description": "Send pages and detected media from the browser into the Fetchora desktop app.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:38945/*",
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Fetchora Capture",
+    "default_popup": "popup.html"
+  }
+}

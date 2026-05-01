@@ -3,166 +3,201 @@ function $(id) {
 }
 
 function escapeHtml(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 }
 
 function formatBytes(bytes) {
-    if (!bytes || bytes <= 0) return '0.0 MB';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    if (!bytes || bytes <= 0) return "0.0 MB";
+    const units = ["B", "KB", "MB", "GB", "TB"];
     let size = bytes;
     let index = 0;
     while (size >= 1024 && index < units.length - 1) {
         size /= 1024;
         index += 1;
     }
-    const precision = index === 0 ? 0 : 1;
-    return `${size.toFixed(precision)} ${units[index]}`;
+    return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function normalizeSpeed(value) {
-    const text = String(value || '0 KB/S').trim();
-    return text ? text.toUpperCase() : '0 KB/S';
+    const text = String(value || "0 KB/S").trim();
+    return text ? text.toUpperCase() : "0 KB/S";
+}
+
+async function apiGet(url) {
+    const response = await fetch(url, { cache: "no-store" });
+    return response.json();
+}
+
+async function apiPost(url, payload = {}) {
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    return response.json();
+}
+
+const sourceKinds = ["video", "audio", "file", "playlist", "document", "browser"];
+let currentSource = null;
+let currentPlaylist = null;
+let downloadsById = new Map();
+let seenCaptureIds = new Set();
+
+function normalizeSourceKind(kind) {
+    const value = String(kind || "").toLowerCase();
+    if (value === "video_file") return "video";
+    if (value === "audio_file") return "audio";
+    if (value === "archive" || value === "image") return "file";
+    if (value === "page") return "browser";
+    if (sourceKinds.includes(value)) return value;
+    return "file";
 }
 
 function showView(viewId) {
-    document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
-    $(`view-${viewId}`).classList.add('active');
+    document.querySelectorAll(".view").forEach(view => view.classList.remove("active"));
+    $(`view-${viewId}`).classList.add("active");
 
-    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-    const targetBtn = Array.from(document.querySelectorAll('.nav-btn')).find(
+    document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.remove("active"));
+    const targetBtn = Array.from(document.querySelectorAll(".nav-btn")).find(
         btn => btn.innerText.includes(viewId.toUpperCase())
     );
-    if (targetBtn) targetBtn.classList.add('active');
+    if (targetBtn) targetBtn.classList.add("active");
 }
 
 function openModal(modalId) {
-    $(modalId).style.display = 'block';
+    $(modalId).style.display = "block";
 }
 
 function closeModal(modalId) {
-    $(modalId).style.display = 'none';
+    $(modalId).style.display = "none";
 }
 
-function showSystemNotice(message, tone = 'info') {
-    const notice = $('system-notice');
+function showSystemNotice(message, tone = "info") {
+    const notice = $("system-notice");
     notice.className = `system-notice show tone-${tone}`;
-    $('system-notice-text').innerText = String(message || '').toUpperCase();
+    $("system-notice-text").innerText = String(message || "").toUpperCase();
     window.clearTimeout(showSystemNotice.timeoutId);
     showSystemNotice.timeoutId = window.setTimeout(() => {
-        notice.classList.remove('show');
-    }, 5000);
+        notice.classList.remove("show");
+    }, 4500);
+}
+
+function setActiveKind(kind, summary) {
+    sourceKinds.forEach(name => {
+        const dashPill = $(`pill-${name}`);
+        const modalChip = $(`source-chip-${name}`);
+        if (dashPill) dashPill.classList.toggle("active-kind", name === kind);
+        if (modalChip) modalChip.classList.toggle("active-kind", name === kind);
+    });
+    if (summary) $("source-summary").innerText = summary.toUpperCase();
+}
+
+function setDetectionBanner(kind, note) {
+    $("detected-kind").innerText = String(kind || "READY").toUpperCase();
+    $("detected-note").innerText = String(note || "SOURCE DETAILS WILL APPEAR HERE").toUpperCase();
 }
 
 function clearVideoInfo() {
-    $('video-info').classList.add('hidden');
-    $('formats-list').innerHTML = '';
+    $("video-info").classList.add("hidden");
+    $("formats-list").innerHTML = "";
+    currentSource = null;
     currentPlaylist = null;
-}
-
-function updateDashboardSummary() {
-    const totalBytes = Object.values(activeDownloads).reduce(
-        (sum, item) => sum + (item.completedBytes || 0),
-        0
-    );
-    $('total-downloaded').innerText = formatBytes(totalBytes).toUpperCase();
-
-    const activeCount = Object.values(activeDownloads).filter(item => item.status === 'active').length;
-    if (activeCount === 0) {
-        $('global-speed').innerText = '0 KB/S';
-    }
+    setDetectionBanner("READY", "SOURCE DETAILS WILL APPEAR HERE");
 }
 
 function ensureEmptyState() {
-    const list = $('active-downloads');
-    const hasRows = list.querySelector('.download-row');
-    const existingEmpty = list.querySelector('.empty-state');
-    if (!hasRows && !existingEmpty) {
-        const empty = document.createElement('div');
-        empty.className = 'empty-state';
-        empty.innerText = 'NO ACTIVE DOWNLOADS';
-        list.appendChild(empty);
-    } else if (hasRows && existingEmpty) {
-        existingEmpty.remove();
+    const list = $("active-downloads");
+    const hasRows = list.querySelector(".download-row");
+    const empty = list.querySelector(".empty-state");
+    if (!hasRows && !empty) {
+        const node = document.createElement("div");
+        node.className = "empty-state";
+        node.innerText = "NO ACTIVE DOWNLOADS";
+        list.appendChild(node);
+    } else if (hasRows && empty) {
+        empty.remove();
     }
 }
 
-let activeDownloads = {};
-let currentPlaylist = null;
+function updateDashboardSummary(downloads) {
+    const totalBytes = downloads.reduce((sum, item) => sum + (item.completed_bytes || 0), 0);
+    $("total-downloaded").innerText = formatBytes(totalBytes).toUpperCase();
+    const active = downloads.filter(item => item.status === "active");
+    $("global-speed").innerText = active.length ? normalizeSpeed(active[0].speed) : "0 KB/S";
+}
 
 async function fetchInfo() {
-    const url = $('url-input').value.trim();
+    const url = $("url-input").value.trim();
     if (!url) {
-        showSystemNotice('Paste a video or playlist URL first.', 'warning');
+        showSystemNotice("Paste a source URL first.", "warning");
         return;
     }
 
-    const fetchBtn = $('fetch-btn');
+    const fetchBtn = $("fetch-btn");
     fetchBtn.disabled = true;
-    fetchBtn.innerText = 'SCANNING...';
+    fetchBtn.innerText = "SCANNING...";
     clearVideoInfo();
 
     try {
-        const info = await eel.get_video_info(url)();
-        if (!info) {
-            showSystemNotice('Scan failed. Check the URL or browser sync.', 'error');
+        const result = await apiPost("/api/info", { url });
+        if (!result.ok || !result.info) {
+            showSystemNotice(result.error || "Source scan failed.", "error");
             return;
         }
-        displayInfo(info);
+        displayInfo(result.info);
     } catch (error) {
         console.error(error);
-        showSystemNotice(`Scan failed: ${error}`, 'error');
+        showSystemNotice(`Scan failed: ${error}`, "error");
     } finally {
         fetchBtn.disabled = false;
-        fetchBtn.innerText = 'SCAN URL';
+        fetchBtn.innerText = "SCAN SOURCE";
     }
 }
 
 function displayInfo(info) {
-    if (!info) return;
+    currentSource = info;
+    $("video-info").classList.remove("hidden");
+    $("video-title").innerText = String(info.title || "UNKNOWN SOURCE").toUpperCase();
 
-    const infoPanel = $('video-info');
-    infoPanel.classList.remove('hidden');
-    $('video-title').innerText = String(info.title || 'UNKNOWN TITLE').toUpperCase();
+    const kind = normalizeSourceKind(info.source_kind || info.type || "file");
+    setActiveKind(kind, `Ready for ${kind} download`);
+    setDetectionBanner(kind, info.type === "playlist" ? "Selective bulk download is enabled." : "Source detected and ready.");
 
-    const list = $('formats-list');
-    list.innerHTML = '';
+    const list = $("formats-list");
+    list.innerHTML = "";
 
-    if (info.type === 'playlist') {
+    if (info.type === "playlist") {
         currentPlaylist = info;
-        const isAutoPlaylist = info.title.toUpperCase().includes('MIX') || info.entries.length > 50;
-        const initialCount = isAutoPlaylist ? 20 : info.entries.length;
-        renderPlaylistContent(initialCount, isAutoPlaylist);
+        const isLargePlaylist = info.entries.length > 50 || info.title.toUpperCase().includes("MIX");
+        renderPlaylistContent(isLargePlaylist ? 20 : info.entries.length, isLargePlaylist);
         return;
     }
 
     currentPlaylist = null;
-    info.formats.forEach(f => {
-        const row = document.createElement('div');
-        row.className = 'format-row';
-        let typeText = f.type || 'UNKNOWN';
-        if (typeText.includes('Mute')) typeText = 'HIGH-RES + SOUND (AUTO)';
+    info.formats.forEach(format => {
+        const row = document.createElement("div");
+        row.className = "format-row";
         row.innerHTML = `
-            <span class="col-res">${escapeHtml(f.resolution || 'AUTO')}</span>
-            <span class="col-type">${escapeHtml(typeText.toUpperCase())}</span>
-            <span class="col-size">${escapeHtml((f.size || 'UNKNOWN').toUpperCase())}</span>
+            <span class="col-res">${escapeHtml(format.resolution || "AUTO")}</span>
+            <span class="col-type">${escapeHtml((format.type || "DOWNLOAD").toUpperCase())}</span>
+            <span class="col-size">${escapeHtml((format.size || "UNKNOWN").toUpperCase())}</span>
             <div class="col-action">
-                <button class="get-btn" type="button" data-format-id="${escapeHtml(f.id || 'best')}">GET</button>
+                <button class="get-btn" type="button">GET</button>
             </div>
         `;
-        row.querySelector('.get-btn').addEventListener('click', () => startDownload(f.id || 'best', info.title));
+        row.querySelector(".get-btn").addEventListener("click", () => startDownload(format.id || "best", info.title));
         list.appendChild(row);
     });
 }
 
 function renderPlaylistContent(count, isLimited) {
-    const list = $('formats-list');
+    const list = $("formats-list");
     const displayEntries = currentPlaylist.entries.slice(0, count);
-
     list.innerHTML = `
         <div class="bulk-options">
             <div class="bulk-selection-header">
@@ -173,395 +208,344 @@ function renderPlaylistContent(count, isLimited) {
                 </label>
                 <div class="playlist-meta">
                     <p>${currentPlaylist.entries.length} TRACKS FOUND</p>
-                    ${isLimited ? `<span class="warning-text">PREVIEWING FIRST ${count}</span>` : '<span class="warning-text">FULL PLAYLIST READY</span>'}
+                    ${isLimited ? `<span class="warning-text">PREVIEWING FIRST ${count}</span>` : `<span class="warning-text">FULL PLAYLIST READY</span>`}
                 </div>
             </div>
-
             <div class="bulk-config">
                 <div class="quality-selector">
-                    <label>SELECT QUALITY:</label>
+                    <label>SELECT MODE:</label>
                     <select id="bulk-quality">
-                        <option value="1080p">1080P FULL HD</option>
-                        <option value="720p" selected>720P HD</option>
-                        <option value="480p">480P SD</option>
-                        <option value="360p">360P LOW</option>
-                        <option value="audio">AUDIO ONLY (MP3)</option>
+                        <option value="1080p">1080P VIDEO</option>
+                        <option value="720p" selected>720P VIDEO</option>
+                        <option value="480p">480P VIDEO</option>
+                        <option value="360p">360P VIDEO</option>
+                        <option value="audio">AUDIO ONLY</option>
                     </select>
                 </div>
-                <button class="primary-btn" type="button" onclick="startBulkDownload()">GET SELECTED TRACKS</button>
+                <button class="primary-btn" type="button" onclick="startBulkDownload()">GET SELECTED</button>
             </div>
-
             ${isLimited ? `
                 <div class="load-more-section">
-                    <p class="small-hint">THIS IS A LARGE OR AUTOMATED MIX. LOADING EVERYTHING MAY TAKE LONGER.</p>
+                    <p class="small-hint">LARGE PLAYLIST DETECTED. LOAD THE FULL SET ONLY IF YOU NEED IT.</p>
                     <button class="load-all-btn" id="load-all-trigger" type="button" onclick="loadFullPlaylist()">LOAD FULL PLAYLIST</button>
                 </div>
-            ` : ''}
+            ` : ""}
         </div>
         <div class="playlist-preview">
-            ${displayEntries.map((entry, index) => `
+            ${displayEntries.map(entry => `
                 <div class="playlist-item">
                     <label class="custom-checkbox">
-                        <input
-                            type="checkbox"
-                            class="playlist-item-checkbox"
-                            data-url="${escapeHtml(entry.url || '')}"
-                            data-title="${escapeHtml(entry.title || 'UNKNOWN TITLE')}"
-                            checked
-                            onchange="refreshPlaylistSelection()"
-                        >
+                        <input type="checkbox" class="playlist-item-checkbox" data-url="${escapeHtml(entry.url || "")}" data-title="${escapeHtml(entry.title || "Unknown Title")}" checked onchange="refreshPlaylistSelection()">
                         <span class="checkmark"></span>
-                        ${escapeHtml((entry.title || 'UNKNOWN TITLE').toUpperCase())}
+                        ${escapeHtml((entry.title || "Unknown Title").toUpperCase())}
                     </label>
                 </div>
-            `).join('')}
+            `).join("")}
         </div>
     `;
-
     refreshPlaylistSelection();
 }
 
 function loadFullPlaylist() {
-    const trigger = $('load-all-trigger');
-    if (trigger) trigger.innerText = 'LOADING...';
-    window.setTimeout(() => renderPlaylistContent(currentPlaylist.entries.length, false), 50);
+    const trigger = $("load-all-trigger");
+    if (trigger) trigger.innerText = "LOADING...";
+    window.setTimeout(() => renderPlaylistContent(currentPlaylist.entries.length, false), 60);
 }
 
 function toggleSelectAll(master) {
-    document.querySelectorAll('.playlist-item-checkbox').forEach(cb => {
+    document.querySelectorAll(".playlist-item-checkbox").forEach(cb => {
         cb.checked = master.checked;
     });
     refreshPlaylistSelection();
 }
 
 function refreshPlaylistSelection() {
-    const checked = document.querySelectorAll('.playlist-item-checkbox:checked').length;
-    const total = document.querySelectorAll('.playlist-item-checkbox').length;
-    const master = $('select-all-playlist');
-    if (master) {
-        master.checked = total > 0 && checked === total;
-        master.indeterminate = checked > 0 && checked < total;
-    }
+    const checked = document.querySelectorAll(".playlist-item-checkbox:checked").length;
+    const total = document.querySelectorAll(".playlist-item-checkbox").length;
+    const master = $("select-all-playlist");
+    if (!master) return;
+    master.checked = total > 0 && checked === total;
+    master.indeterminate = checked > 0 && checked < total;
 }
 
 async function startBulkDownload() {
     if (!currentPlaylist) return;
+    const items = Array.from(document.querySelectorAll(".playlist-item-checkbox:checked"))
+        .map(cb => ({
+            id: Math.random().toString(36).slice(2, 11),
+            url: cb.dataset.url || "",
+            title: cb.dataset.title || "Unknown Title",
+        }))
+        .filter(item => item.url);
 
-    const quality = $('bulk-quality').value;
-    const checkedBoxes = document.querySelectorAll('.playlist-item-checkbox:checked');
-    const items = Array.from(checkedBoxes)
-        .map(cb => {
-            const url = cb.dataset.url || '';
-            const title = cb.dataset.title || 'Unknown Title';
-            if (!url) return null;
-            const dlId = Math.random().toString(36).slice(2, 11);
-            addDownloadToDashboard(dlId, title);
-            return { url, title, id: dlId };
-        })
-        .filter(Boolean);
-
-    if (items.length === 0) {
-        showSystemNotice('Select at least one track to continue.', 'warning');
+    if (!items.length) {
+        showSystemNotice("Select at least one playlist item.", "warning");
         return;
     }
 
-    closeModal('add-url-modal');
-    showView('dashboard');
-    showSystemNotice(`Queued ${items.length} playlist items.`, 'info');
-
-    try {
-        await eel.start_bulk_download(items, quality)();
-    } catch (error) {
-        console.error(error);
-        showSystemNotice(`Bulk download failed to start: ${error}`, 'error');
+    closeModal("add-url-modal");
+    showView("dashboard");
+    const result = await apiPost("/api/bulk_download", {
+        items,
+        quality: $("bulk-quality").value,
+    });
+    if (result.ok) {
+        showSystemNotice(`Queued ${items.length} playlist items.`, "success");
+    } else {
+        showSystemNotice(result.error || "Bulk start failed.", "error");
     }
 }
 
 async function startDownload(formatId, title) {
-    const url = $('url-input').value.trim();
+    const url = $("url-input").value.trim();
     if (!url) {
-        showSystemNotice('Paste a URL before starting a download.', 'warning');
+        showSystemNotice("Paste a source URL before downloading.", "warning");
         return;
     }
-
-    closeModal('add-url-modal');
-    showView('dashboard');
-
-    const dlId = Math.random().toString(36).slice(2, 11);
-    addDownloadToDashboard(dlId, title);
-
-    try {
-        await eel.start_download(url, formatId, dlId)();
-    } catch (error) {
-        console.error('Download trigger failed:', error);
-        markDownloadState(dlId, 'error', `FAILED: ${error}`);
-        showSystemNotice(`Download failed to start: ${error}`, 'error');
+    closeModal("add-url-modal");
+    showView("dashboard");
+    const result = await apiPost("/api/download", {
+        url,
+        format_id: formatId,
+        title,
+    });
+    if (result.ok) {
+        showSystemNotice("Download queued.", "success");
+    } else {
+        showSystemNotice(result.error || "Download failed to start.", "error");
     }
 }
 
-function addDownloadToDashboard(id, title) {
-    const list = $('active-downloads');
-    ensureEmptyState();
+function renderDownloadRow(item) {
+    const existing = $(`dl-${item.id}`);
+    const row = existing || document.createElement("div");
+    row.className = "download-row";
+    row.id = `dl-${item.id}`;
+    row.setAttribute("data-status", item.status);
 
-    const row = document.createElement('div');
-    row.className = 'download-row';
-    row.id = `dl-${id}`;
-    row.setAttribute('data-status', 'active');
+    const lightClass = item.status === "completed" ? "green" : item.status === "cancelled" ? "yellow" : item.status === "error" ? "red" : "blue";
+    const actionHtml = item.status === "completed" && item.save_path
+        ? `<button class="small-btn green-text" type="button" onclick="openFolderFromRow('${item.id}')">OPEN FOLDER</button>`
+        : item.status === "active" || item.status === "queued"
+            ? `<button class="small-btn" type="button" onclick="cancelDownload('${item.id}')">CANCEL</button>`
+            : "";
+
     row.innerHTML = `
-        <span class="col-status"><span class="light blue"></span></span>
-        <span class="col-name" title="${escapeHtml(title)}">${escapeHtml(title.toUpperCase())}</span>
+        <span class="col-status"><span class="light ${lightClass}"></span></span>
+        <span class="col-name" title="${escapeHtml(item.title || "Download")}">${escapeHtml(String(item.title || "Download").toUpperCase())}</span>
         <div class="col-progress">
             <div class="progress-bar-container">
-                <div class="progress-fill" style="width: 0%"></div>
+                <div class="progress-fill" style="width: ${Math.max(0, Math.min((item.progress || 0) * 100, 100))}%"></div>
             </div>
         </div>
-        <span class="col-speed">QUEUED</span>
-        <div class="col-actions">
-            <button class="small-btn" type="button" onclick="cancelDownload('${id}')">CANCEL</button>
-        </div>
+        <span class="col-speed">${escapeHtml(normalizeSpeed(item.speed || "QUEUED"))}</span>
+        <div class="col-actions">${actionHtml}</div>
     `;
-    list.appendChild(row);
 
-    activeDownloads[id] = {
-        title,
-        progress: 0,
-        status: 'active',
-        completedBytes: 0,
-        savePath: ''
-    };
-    ensureEmptyState();
-    updateDashboardSummary();
+    if (!existing) $("active-downloads").appendChild(row);
 }
 
-function markDownloadState(id, status, speedText) {
-    const row = $(`dl-${id}`);
-    if (!row) return;
+async function openFolderFromRow(downloadId) {
+    const item = downloadsById.get(downloadId);
+    if (item?.save_path) {
+        await apiPost("/api/open_folder", { path: item.save_path });
+    }
+}
 
-    row.setAttribute('data-status', status);
-    const light = row.querySelector('.light');
-    const speed = row.querySelector('.col-speed');
-    const actions = row.querySelector('.col-actions');
-
-    if (status === 'completed') {
-        light.className = 'light green';
-    } else if (status === 'cancelled') {
-        light.className = 'light yellow';
-    } else if (status === 'error') {
-        light.className = 'light red';
-    } else {
-        light.className = 'light blue';
+function syncDownloads(downloads) {
+    const ids = new Set(downloads.map(item => item.id));
+    for (const oldId of downloadsById.keys()) {
+        if (!ids.has(oldId)) {
+            const row = $(`dl-${oldId}`);
+            if (row) row.remove();
+            downloadsById.delete(oldId);
+        }
     }
 
-    if (speedText) speed.innerText = speedText;
-    if (status !== 'active') actions.innerHTML = '';
+    downloads.forEach(item => {
+        downloadsById.set(item.id, item);
+        renderDownloadRow(item);
+    });
+
+    ensureEmptyState();
+    updateDashboardSummary(downloads);
 }
 
-function setRowOpenFolderAction(row, savePath) {
-    const actions = row.querySelector('.col-actions');
-    actions.innerHTML = '';
-    if (!savePath) return;
-
-    const button = document.createElement('button');
-    button.className = 'small-btn green-text';
-    button.type = 'button';
-    button.innerText = 'OPEN FOLDER';
-    button.addEventListener('click', () => eel.open_folder(savePath)());
-    actions.appendChild(button);
+async function pollDownloads() {
+    try {
+        const result = await apiGet("/api/downloads");
+        if (result.ok) syncDownloads(result.downloads || []);
+    } catch (error) {
+        console.error(error);
+    }
 }
 
-function filterDownloads(status, btn) {
-    document.querySelectorAll('.filter-btn').forEach(button => button.classList.remove('active'));
-    btn.classList.add('active');
+async function cancelDownload(id) {
+    await apiPost("/api/cancel", { download_id: id });
+}
 
-    document.querySelectorAll('.download-row').forEach(row => {
-        row.style.display = status === 'all' || row.getAttribute('data-status') === status ? 'flex' : 'none';
+async function cancelAllDownloads() {
+    showConfirm("Cancel all active downloads?", async () => {
+        await apiPost("/api/cancel_all", {});
+        showSystemNotice("All active downloads were cancelled.", "warning");
     });
 }
 
-function clearDashboard() {
-    const hasActive = Object.values(activeDownloads).some(item => item.status === 'active');
-    if (hasActive) {
-        showSystemNotice('Active downloads are still running. Cancel them before clearing the dashboard.', 'warning');
+async function clearDashboard() {
+    const active = Array.from(downloadsById.values()).some(item => item.status === "active");
+    if (active) {
+        showSystemNotice("Cancel active downloads before clearing the dashboard.", "warning");
         return;
     }
-
-    showConfirm('Clear completed, cancelled, and failed items from the dashboard?', async () => {
-        Object.keys(activeDownloads).forEach(id => {
-            const row = $(`dl-${id}`);
-            if (row) row.remove();
-            delete activeDownloads[id];
-        });
-        ensureEmptyState();
-        updateDashboardSummary();
-        showSystemNotice('Dashboard cleared.', 'success');
-    });
-}
-
-function cancelDownload(id) {
-    showConfirm('Cancel this download?', async () => {
-        await eel.cancel_download(id)();
-        if (activeDownloads[id]) activeDownloads[id].status = 'cancelled';
-        markDownloadState(id, 'cancelled', 'CANCELLED');
-        $('interrupted-msg').innerText = 'PROCESS STOPPED BY USER';
-        openModal('interrupted-modal');
-        showSystemNotice('Download cancelled.', 'warning');
-        updateDashboardSummary();
-    });
-}
-
-function cancelAllDownloads() {
-    showConfirm('Cancel all active downloads?', async () => {
-        await eel.cancel_all_downloads()();
-        Object.entries(activeDownloads).forEach(([id, item]) => {
-            if (item.status === 'active') {
-                item.status = 'cancelled';
-                markDownloadState(id, 'cancelled', 'CANCELLED');
-            }
-        });
-        $('interrupted-msg').innerText = 'ALL ACTIVE DOWNLOADS WERE STOPPED';
-        openModal('interrupted-modal');
-        showSystemNotice('All active downloads were cancelled.', 'warning');
-        updateDashboardSummary();
+    showConfirm("Clear the finished dashboard queue?", async () => {
+        await apiPost("/api/clear_dashboard", {});
+        await pollDownloads();
+        showSystemNotice("Dashboard cleared.", "success");
     });
 }
 
 function showConfirm(message, onConfirm) {
-    $('confirm-msg').innerText = String(message || '').toUpperCase();
-    $('confirm-yes-btn').onclick = async () => {
+    $("confirm-msg").innerText = String(message || "").toUpperCase();
+    $("confirm-yes-btn").onclick = async () => {
         try {
             await onConfirm();
         } finally {
-            closeModal('confirm-modal');
+            closeModal("confirm-modal");
         }
     };
-    openModal('confirm-modal');
+    openModal("confirm-modal");
 }
 
-function updateBrowserSync() {
-    const browser = $('browser-sync').value;
-    eel.set_browser(browser)();
-    showSystemNotice(`Browser sync set to ${browser}.`, 'info');
+function renderBrowserCaptures(captures) {
+    const container = $("browser-captures");
+    if (!captures.length) {
+        container.innerHTML = '<div class="empty-state compact-empty">NO BROWSER CAPTURES YET</div>';
+        return;
+    }
+    container.innerHTML = captures.map(capture => `
+        <div class="capture-row">
+            <div class="capture-copy">
+                <strong>${escapeHtml(String(capture.title || "Browser Capture").toUpperCase())}</strong>
+                <span>${escapeHtml(String((capture.kind || "page")).toUpperCase())}</span>
+                <p>${escapeHtml(capture.url || capture.page_url || "")}</p>
+            </div>
+            <div class="capture-actions">
+                <button class="small-btn" type="button" onclick="loadCaptureIntoScanner('${capture.id}')">OPEN</button>
+            </div>
+        </div>
+    `).join("");
 }
 
-eel.expose(onProgress);
-function onProgress(dlId, progress, speed) {
-    const row = $(`dl-${dlId}`);
-    if (row) {
-        row.querySelector('.progress-fill').style.width = `${Math.max(0, Math.min(progress * 100, 100))}%`;
-        row.querySelector('.col-speed').innerText = normalizeSpeed(speed);
-        row.setAttribute('data-status', 'active');
-        row.querySelector('.light').className = 'light blue';
+async function pollCaptures() {
+    try {
+        const result = await apiGet("/api/captures");
+        if (!result.ok) return;
+        const captures = result.captures || [];
+        const newest = captures[0];
+        if (newest && !seenCaptureIds.has(newest.id)) {
+            seenCaptureIds.add(newest.id);
+            $("url-input").value = newest.url || newest.page_url || "";
+            openModal("add-url-modal");
+            clearVideoInfo();
+            fetchInfo();
+            setActiveKind("browser", "Browser capture received and scanned.");
+            showSystemNotice("New browser capture received.", "success");
+        }
+        captures.forEach(item => seenCaptureIds.add(item.id));
+        renderBrowserCaptures(captures);
+    } catch (error) {
+        console.error(error);
     }
-    if (activeDownloads[dlId]) {
-        activeDownloads[dlId].progress = progress;
-        activeDownloads[dlId].status = 'active';
-    }
-    $('global-speed').innerText = normalizeSpeed(speed);
 }
 
-eel.expose(onComplete);
-function onComplete(dlId, savePath, fileSize) {
-    const row = $(`dl-${dlId}`);
-    if (activeDownloads[dlId]) {
-        activeDownloads[dlId].status = 'completed';
-        activeDownloads[dlId].completedBytes = Number(fileSize || 0);
-        activeDownloads[dlId].savePath = savePath || '';
-    }
-
-    if (row) {
-        markDownloadState(dlId, 'completed', 'COMPLETED');
-        row.querySelector('.progress-fill').style.width = '100%';
-        setRowOpenFolderAction(row, savePath);
-    }
-
-    $('completion-msg').innerText = 'DOWNLOAD FINISHED SUCCESSFULLY!';
-    $('open-file-btn').disabled = !savePath;
-    $('open-folder-btn').disabled = !savePath;
-    $('open-file-btn').onclick = () => {
-        if (savePath) eel.open_file(savePath)();
-        closeModal('completion-modal');
-    };
-    $('open-folder-btn').onclick = () => {
-        if (savePath) eel.open_folder(savePath)();
-        closeModal('completion-modal');
-    };
-
-    openModal('completion-modal');
-    showSystemNotice('Download completed.', 'success');
-    updateDashboardSummary();
+function loadCaptureIntoScanner(captureId) {
+    const captures = Array.from(seenCaptureIds);
+    void captures;
+    apiGet("/api/captures").then(result => {
+        const capture = (result.captures || []).find(item => item.id === captureId);
+        if (!capture) return;
+        $("url-input").value = capture.url || capture.page_url || "";
+        openModal("add-url-modal");
+        clearVideoInfo();
+        fetchInfo();
+    });
 }
 
-eel.expose(onError);
-function onError(dlId, error) {
-    if (dlId && activeDownloads[dlId]) {
-        activeDownloads[dlId].status = 'error';
-        markDownloadState(dlId, 'error', 'FAILED');
-    }
-    showSystemNotice(`Download error: ${error}`, 'error');
-    updateDashboardSummary();
+async function clearBrowserInbox() {
+    await apiPost("/api/captures/clear", {});
+    renderBrowserCaptures([]);
+    showSystemNotice("Browser inbox cleared.", "success");
 }
 
-eel.expose(onSystemMessage);
-function onSystemMessage(message, level) {
-    showSystemNotice(message, level || 'info');
-
-    if (String(message).toLowerCase().includes('ffmpeg installed')) {
-        const light = $('ffmpeg-status').querySelector('.light');
-        const text = $('ffmpeg-status').querySelector('.text');
-        light.className = 'light green';
-        text.innerText = 'DETECTED';
-    }
+async function updateBrowserSync() {
+    const browser = $("browser-sync").value;
+    await apiPost("/api/set_browser", { browser });
+    showSystemNotice(`Browser sync set to ${browser}.`, "info");
 }
 
 async function pasteClipboard() {
-    const text = await eel.get_clipboard()();
-    $('url-input').value = text;
+    try {
+        const text = await navigator.clipboard.readText();
+        $("url-input").value = text;
+    } catch (error) {
+        showSystemNotice("Clipboard access failed.", "warning");
+    }
 }
 
 function toggleDarkMode() {
-    const enabled = $('dark-mode-toggle').checked;
-    document.body.classList.toggle('dark-mode', enabled);
-    window.localStorage.setItem('fetchora-dark-mode', enabled ? '1' : '0');
+    const enabled = $("dark-mode-toggle").checked;
+    document.body.classList.toggle("dark-mode", enabled);
+    window.localStorage.setItem("fetchora-dark-mode", enabled ? "1" : "0");
 }
 
 async function changeSavePath() {
-    try {
-        const path = await eel.change_save_path()();
-        if (path) {
-            $('save-path-input').value = path;
-            showSystemNotice('Download path updated.', 'success');
-        }
-    } catch (error) {
-        console.error(error);
-        showSystemNotice(`Failed to change save path: ${error}`, 'error');
+    const result = await apiPost("/api/change_save_path", {});
+    if (result.path) {
+        $("save-path-input").value = result.path;
+        showSystemNotice("Download path updated.", "success");
     }
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
-    const prefersDarkMode = window.localStorage.getItem('fetchora-dark-mode');
-    const darkModeEnabled = prefersDarkMode === null ? true : prefersDarkMode === '1';
-    $('dark-mode-toggle').checked = darkModeEnabled;
-    document.body.classList.toggle('dark-mode', darkModeEnabled);
+async function triggerFfmpegInstall() {
+    await apiPost("/api/install_ffmpeg", {});
+    showSystemNotice("Media engine install started.", "info");
+}
 
-    ensureEmptyState();
+window.addEventListener("DOMContentLoaded", async () => {
+    const storedDarkMode = window.localStorage.getItem("fetchora-dark-mode");
+    const darkModeEnabled = storedDarkMode === null ? true : storedDarkMode === "1";
+    $("dark-mode-toggle").checked = darkModeEnabled;
+    document.body.classList.toggle("dark-mode", darkModeEnabled);
 
     try {
-        const settings = await eel.get_settings()();
-        $('save-path-input').value = settings.save_path;
-        $('browser-sync').value = settings.browser || 'None';
+        const result = await apiGet("/api/settings");
+        const settings = result.settings;
+        $("save-path-input").value = settings.save_path;
+        $("browser-sync").value = settings.browser || "None";
+        $("bridge-port-note").innerText = `EXTENSION CONNECTS TO HTTP://127.0.0.1:${settings.bridge_port}`.toUpperCase();
 
-        const ffmpegStatus = $('ffmpeg-status');
-        const light = ffmpegStatus.querySelector('.light');
-        const text = ffmpegStatus.querySelector('.text');
+        const ffmpegStatus = $("ffmpeg-status");
+        const light = ffmpegStatus.querySelector(".light");
+        const text = ffmpegStatus.querySelector(".text");
+        const installButton = ffmpegStatus.querySelector(".small-btn");
         if (settings.has_ffmpeg) {
-            light.className = 'light green';
-            text.innerText = 'DETECTED';
+            light.className = "light green";
+            text.innerText = settings.ffmpeg_mode === "bundled" ? "BUNDLED AND READY" : "ENGINE READY";
+            installButton.style.display = "none";
         } else {
-            light.className = 'light red';
-            text.innerText = 'NOT DETECTED';
+            light.className = "light red";
+            text.innerText = "ENGINE MISSING";
+            installButton.style.display = "none";
         }
     } catch (error) {
-        console.error('Failed to load settings', error);
-        showSystemNotice('Failed to load settings.', 'error');
+        console.error(error);
+        showSystemNotice("Failed to load settings.", "error");
     }
+
+    ensureEmptyState();
+    setActiveKind("video", "In-page browser popup can now fetch qualities directly.");
+    pollDownloads();
+    pollCaptures();
+    window.setInterval(pollDownloads, 1000);
+    window.setInterval(pollCaptures, 1000);
 });
