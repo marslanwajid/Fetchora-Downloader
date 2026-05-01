@@ -448,7 +448,7 @@ async function pollCaptures() {
             openModal("add-url-modal");
             clearVideoInfo();
             fetchInfo();
-            setActiveKind("browser", "Browser capture received and scanned.");
+            setActiveKind(normalizeSourceKind(newest.kind), "Browser media capture received and scanned.");
             showSystemNotice("New browser capture received.", "success");
         }
         captures.forEach(item => seenCaptureIds.add(item.id));
@@ -543,7 +543,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
 
     ensureEmptyState();
-    setActiveKind("video", "In-page browser popup can now fetch qualities directly.");
+    setActiveKind("browser", "Browser and in-page detection are ready for universal media capture.");
     pollDownloads();
     pollCaptures();
     window.setInterval(pollDownloads, 1000);

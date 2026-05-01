@@ -36,28 +36,133 @@ async function scanMediaOnPage(tabId) {
     const [result] = await chrome.scripting.executeScript({
         target: { tabId },
         func: () => {
+            const mediaExtensions = [
+                ".m3u8", ".mpd", ".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi",
+                ".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac"
+            ];
+            const nonMediaExtensions = [
+                ".js", ".mjs", ".css", ".json", ".xml", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".ico"
+            ];
+            const mediaHintKeys = ["video", "audio", "stream", "media", "playlist", "manifest", "mpd", "m3u8"];
+
+            function normalizeUrl(rawUrl) {
+                try {
+                    return new URL(rawUrl, window.location.href).toString();
+                } catch (error) {
+                    return "";
+                }
+            }
+
+            function isUsableMediaUrl(url) {
+                return Boolean(url) && !url.startsWith("blob:") && !url.startsWith("mediastream:");
+            }
+
+            function looksLikeMediaUrl(url) {
+                if (!isUsableMediaUrl(url)) return false;
+                const normalized = normalizeUrl(url);
+                if (!normalized) return false;
+                const parsed = new URL(normalized);
+                const haystack = `${parsed.pathname}${parsed.search}`.toLowerCase();
+                if (mediaExtensions.some(ext => haystack.includes(ext))) return true;
+                if (nonMediaExtensions.some(ext => haystack.includes(ext))) return false;
+                return mediaHintKeys.some(token => haystack.includes(token));
+            }
+
+            function pushMatch(bucket, seen, item) {
+                const normalizedUrl = normalizeUrl(item.url || "");
+                if (!normalizedUrl) return;
+                const key = `${item.kind || "file"}::${normalizedUrl}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                bucket.push({
+                    id: item.id,
+                    url: normalizedUrl,
+                    title: item.title || document.title || "Detected Media",
+                    kind: item.kind || "file",
+                    source: item.source || "scan",
+                });
+            }
+
             const matches = [];
+            const seen = new Set();
+
             document.querySelectorAll("video, audio").forEach((node, index) => {
+                const kind = node.tagName.toLowerCase() === "audio" ? "audio" : "video";
                 const src = node.currentSrc || node.src || "";
-                if (src) {
-                    matches.push({
+                if (looksLikeMediaUrl(src)) {
+                    pushMatch(matches, seen, {
                         id: index,
                         url: src,
                         title: document.title || "Detected Media",
-                        kind: node.tagName.toLowerCase() === "audio" ? "audio" : "video",
+                        kind,
+                        source: "media-element",
                     });
                 }
                 node.querySelectorAll("source").forEach((sourceNode, nestedIndex) => {
-                    if (sourceNode.src) {
-                        matches.push({
+                    if (looksLikeMediaUrl(sourceNode.src)) {
+                        pushMatch(matches, seen, {
                             id: `${index}-${nestedIndex}`,
                             url: sourceNode.src,
                             title: document.title || "Detected Media",
-                            kind: node.tagName.toLowerCase() === "audio" ? "audio" : "video",
+                            kind,
+                            source: "media-source",
                         });
                     }
                 });
             });
+
+            [
+                ['meta[property="og:video"]', "video"],
+                ['meta[property="og:audio"]', "audio"],
+                ['meta[name="twitter:player:stream"]', "video"],
+                ['meta[itemprop="contentUrl"]', "video"],
+                ['meta[itemprop="embedUrl"]', "video"],
+            ].forEach(([selector, kind], index) => {
+                document.querySelectorAll(selector).forEach((node, nestedIndex) => {
+                    const content = node.getAttribute("content") || "";
+                    if (looksLikeMediaUrl(content)) {
+                        pushMatch(matches, seen, {
+                            id: `meta-${index}-${nestedIndex}`,
+                            url: content,
+                            title: document.title || "Detected Media",
+                            kind,
+                            source: selector,
+                        });
+                    }
+                });
+            });
+
+            Array.from(document.querySelectorAll("a[href], source[src]"))
+                .slice(0, 250)
+                .forEach((node, index) => {
+                    const url = node.href || node.src || "";
+                    if (!looksLikeMediaUrl(url)) return;
+                    pushMatch(matches, seen, {
+                        id: `dom-${index}`,
+                        url,
+                        title: document.title || "Detected Media",
+                        kind: node.tagName.toLowerCase() === "a" ? "file" : "video",
+                        source: `dom:${node.tagName.toLowerCase()}`,
+                    });
+                });
+
+            try {
+                performance.getEntriesByType("resource")
+                    .slice(-250)
+                    .forEach((entry, index) => {
+                        if (!looksLikeMediaUrl(entry.name)) return;
+                        pushMatch(matches, seen, {
+                            id: `perf-${index}`,
+                            url: entry.name,
+                            title: document.title || "Detected Media",
+                            kind: "video",
+                            source: "performance",
+                        });
+                    });
+            } catch (error) {
+                void error;
+            }
+
             return matches;
         },
     });
@@ -81,7 +186,7 @@ function renderMediaList(items) {
         const displayUrl = rawUrl.startsWith("blob:") || rawUrl.startsWith("mediastream:")
             ? `PAGE FALLBACK -> ${window.location.hostname}`
             : rawUrl;
-        return `<li>${item.kind.toUpperCase()}: ${displayUrl}</li>`;
+        return `<li>${item.kind.toUpperCase()} (${String(item.source || "scan").toUpperCase()}): ${displayUrl}</li>`;
     }).join("");
 }
 

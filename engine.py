@@ -151,6 +151,34 @@ class YTDLEngine:
         except Exception:
             return url
 
+    def _resolution_rank(self, resolution):
+        text = str(resolution or "").lower()
+        match = re.search(r"(\d{3,4})p", text)
+        if match:
+            return int(match.group(1))
+
+        match = re.search(r"(\d{2,5})x(\d{2,5})", text)
+        if match:
+            return int(match.group(2))
+
+        return 0
+
+    def _format_priority(self, item):
+        item_type = str(item.get("type", ""))
+        resolution = self._resolution_rank(item.get("resolution"))
+        size = item.get("_size_bytes") or 0
+
+        if item_type == "Video + Audio":
+            type_rank = 3
+        elif item_type == "Video (Mute)":
+            type_rank = 2
+        elif item_type == "Audio Only":
+            type_rank = 1
+        else:
+            type_rank = 0
+
+        return (type_rank, resolution, size)
+
     def _probe_direct_resource(self, url):
         parsed = urllib.parse.urlparse(url)
         path = urllib.parse.unquote(parsed.path or "")
@@ -262,7 +290,6 @@ class YTDLEngine:
             ydl_opts = {
                 "quiet": True,
                 "no_warnings": True,
-                "extract_flat": "in_playlist",
             }
             if is_youtube_watch:
                 ydl_opts["noplaylist"] = True
@@ -319,8 +346,11 @@ class YTDLEngine:
                         "type": item_type,
                         "size": filesize_str,
                         "note": item.get("format_note", ""),
+                        "_size_bytes": filesize or 0,
                     }
                 )
+
+            detailed_formats.sort(key=self._format_priority, reverse=True)
 
             if not detailed_formats:
                 detailed_formats.append(
@@ -340,7 +370,10 @@ class YTDLEngine:
                 "title": info.get("title", "Unknown Title"),
                 "thumbnail": info.get("thumbnail"),
                 "duration": info.get("duration"),
-                "formats": detailed_formats,
+                "formats": [
+                    {key: value for key, value in item.items() if not key.startswith("_")}
+                    for item in detailed_formats
+                ],
                 "webpage_url": info.get("webpage_url") or url,
             }
         except Exception as exc:
