@@ -7,7 +7,7 @@ project_dir = os.path.dirname(os.path.abspath(__file__))
 ui_dir = os.path.join(project_dir, "ui")
 ffmpeg_path = os.path.join(project_dir, "ffmpeg.exe")
 
-args = [
+args = [   
     "main.py",
     "--noconsole",
     "--onefile",
