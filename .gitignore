@@ -1,0 +1,22 @@
+# Binaries and large files
+ffmpeg.exe
+ffprobe.exe
+*.exe
+*.dll
+
+# PyInstaller / Build outputs
+dist/
+build/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FETCHORA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script type="text/javascript" src="/eel.js"></script>
+</head>
+<body class="dark-mode">
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo-container">
+                <img src="logo.png" alt="FETCHORA Logo" class="logo">
+                <h1 class="brand-name">FETCHORA</h1>
+            </div>
+
+            <nav class="main-nav">
+                <button class="nav-btn active" type="button" onclick="showView('dashboard')">DASHBOARD</button>
+                <button class="nav-btn" type="button" onclick="openModal('add-url-modal')">ADD URL</button>
+                <button class="nav-btn" type="button" onclick="showView('settings')">SETTINGS</button>
+            </nav>
+
+            <div class="stats-panel">
+                <div class="stat-item">
+                    <label>TOTAL DOWNLOADED</label>
+                    <span id="total-downloaded">0.0 MB</span>
+                </div>
+                <div class="stat-item">
+                    <label>GLOBAL SPEED</label>
+                    <span id="global-speed">0 KB/S</span>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="sync-login">
+                    <label>SYNC LOGIN:</label>
+                    <select id="browser-sync" onchange="updateBrowserSync()">
+                        <option value="None">NONE</option>
+                        <option value="Chrome">CHROME</option>
+                        <option value="Edge">EDGE</option>
+                        <option value="Firefox">FIREFOX</option>
+                        <option value="Brave">BRAVE</option>
+                        <option value="Opera">OPERA</option>
+                    </select>
+                </div>
+            </div>
+        </aside>
+
+        <main class="content">
+            <div id="system-notice" class="system-notice tone-info" aria-live="polite">
+                <span class="notice-label">STATUS</span>
+                <span id="system-notice-text">READY</span>
+            </div>
+
+            <section id="view-dashboard" class="view active">
+                <div class="view-header">
+                    <h2 class="view-title">DASHBOARD</h2>
+                    <div class="filter-group">
+                        <button class="filter-btn active" type="button" onclick="filterDownloads('all', this)">ALL</button>
+                        <button class="filter-btn" type="button" onclick="filterDownloads('active', this)">ACTIVE</button>
+                        <button class="filter-btn" type="button" onclick="filterDownloads('completed', this)">COMPLETED</button>
+                        <button class="filter-btn" type="button" onclick="clearDashboard()">CLEAR</button>
+                        <button class="filter-btn red-text" type="button" onclick="cancelAllDownloads()">CANCEL ALL</button>
+                    </div>
+                </div>
+
+                <div class="download-list-container">
+                    <div class="list-header">
+                        <span class="col-status"></span>
+                        <span class="col-name">FILE NAME</span>
+                        <span class="col-progress">PROGRESS</span>
+                        <span class="col-speed">SPEED</span>
+                        <span class="col-actions">ACTIONS</span>
+                    </div>
+                    <div id="active-downloads" class="download-list">
+                        <div class="empty-state">NO ACTIVE DOWNLOADS</div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-settings" class="view">
+                <h2 class="view-title">SETTINGS</h2>
+                <div class="settings-grid">
+                    <div class="setting-card">
+                        <label>DARK MODE</label>
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="dark-mode-toggle" checked onchange="toggleDarkMode()">
+                            <span class="slider"></span>
+                        </div>
+                    </div>
+                    <div class="setting-card">
+                        <label>DOWNLOAD PATH</label>
+                        <div class="input-group">
+                            <input type="text" id="save-path-input" readonly>
+                            <button class="small-btn" type="button" onclick="changeSavePath()">CHANGE</button>
+                        </div>
+                    </div>
+                    <div class="setting-card">
+                        <label>FFMPEG STATUS</label>
+                        <div class="status-indicator" id="ffmpeg-status">
+                            <span class="light red"></span>
+                            <span class="text">NOT DETECTED</span>
+                            <button class="small-btn" type="button" onclick="eel.trigger_ffmpeg_install()()">INSTALL</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="add-url-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>ADD NEW URL</h3>
+                <button class="close-btn" type="button" onclick="closeModal('add-url-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="search-container">
+                    <input type="text" id="url-input" placeholder="PASTE VIDEO OR PLAYLIST URL..." spellcheck="false">
+                    <button class="icon-btn text-icon-btn" type="button" onclick="pasteClipboard()">PASTE</button>
+                </div>
+                <button id="fetch-btn" class="primary-btn full-width" type="button" onclick="fetchInfo()">SCAN URL</button>
+
+                <div id="video-info" class="video-info-panel hidden">
+                    <h4 id="video-title">VIDEO TITLE</h4>
+                    <div class="formats-list-container">
+                        <div class="list-header">
+                            <span class="col-res">RES</span>
+                            <span class="col-type">TYPE</span>
+                            <span class="col-size">SIZE</span>
+                            <span class="col-action">GET</span>
+                        </div>
+                        <div id="formats-list" class="formats-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="completion-modal" class="modal">
+        <div class="modal-content small-modal">
+            <div class="modal-header">
+                <h3>DOWNLOAD COMPLETE</h3>
+                <button class="close-btn" type="button" onclick="closeModal('completion-modal')">&times;</button>
+            </div>
+            <div class="modal-body centered">
+                <div class="success-icon">OK</div>
+                <p id="completion-msg">YOUR FILE IS READY</p>
+                <div class="modal-footer-btns">
+                    <button class="primary-btn" type="button" id="open-file-btn">OPEN FILE</button>
+                    <button class="secondary-btn" type="button" id="open-folder-btn">OPEN FOLDER</button>
+                    <button class="small-btn" type="button" onclick="closeModal('completion-modal')">CLOSE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="interrupted-modal" class="modal">
+        <div class="modal-content small-modal">
+            <div class="modal-header">
+                <h3>DOWNLOAD INTERRUPTED</h3>
+                <button class="close-btn" type="button" onclick="closeModal('interrupted-modal')">&times;</button>
+            </div>
+            <div class="modal-body centered">
+                <p id="interrupted-msg" class="interrupted-text">PROCESS STOPPED BY USER</p>
+                <button class="primary-btn" type="button" onclick="closeModal('interrupted-modal')">DISMISS</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content small-modal">
+            <div class="modal-header">
+                <h3>FETCHORA CONFIRMATION</h3>
+                <button class="close-btn" type="button" onclick="closeModal('confirm-modal')">&times;</button>
+            </div>
+            <div class="modal-body centered">
+                <p id="confirm-msg" class="confirm-text">ARE YOU SURE?</p>
+                <div class="modal-footer-btns">
+                    <button class="primary-btn" type="button" id="confirm-yes-btn">YES, PROCEED</button>
+                    <button class="secondary-btn" type="button" onclick="closeModal('confirm-modal')">NO, CANCEL</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
